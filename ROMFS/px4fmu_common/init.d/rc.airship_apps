@@ -59,9 +59,9 @@ fi
 #
 # Start Airship Attitude Controller.
 #
-airship_att_control start
+# airship_att_control start
 
 #
 # Start Land Detector.
 #
-land_detector start airship
+# land_detector start airship
