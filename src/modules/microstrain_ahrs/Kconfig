@@ -1,0 +1,5 @@
+menuconfig MODULES_MICROSTRAIN_AHRS
+	bool "microstrain_ahrs"
+	default n
+	---help---
+		Enable support for microstrain_ahrs

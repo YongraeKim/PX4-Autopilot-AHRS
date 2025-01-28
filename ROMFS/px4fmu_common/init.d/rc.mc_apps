@@ -82,3 +82,5 @@ fi
 # Start Multicopter Land Detector.
 #
 # land_detector start multicopter
+
+microstrain_ahrs start
