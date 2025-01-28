@@ -2,10 +2,25 @@
 
 #include <MicroStrain.hpp>
 
+#include <nuttx/sched.h>
 #include <sys/prctl.h>
 #include <drivers/drv_hrt.h>
 #include <termios.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <termios.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <stdbool.h>
 #include <fcntl.h>
 
@@ -45,6 +60,7 @@ public:
 	static int print_usage(const char *reason = nullptr);
 
 	bool init();
+	int serial_fd=-1;
 private:
 	perf_counter_t	_loop_perf;			/**< loop duration performance counter */
 	void Run() override;
@@ -52,13 +68,10 @@ private:
 	bool _callback_registered{false};
 	uORB::SubscriptionCallbackWorkItem _sensor_combined_sub{this, ORB_ID(sensor_combined)};
 	uORB::SubscriptionCallbackWorkItem _vehicle_attitude_sub{this, ORB_ID(vehicle_attitude)};
-	uORB::Subscription _vehicle_gps_position_sub{ORB_ID(vehicle_global_position)};
-	uORB::Subscription _vehicle_global_position_sub{ORB_ID(vehicle_gps_position)};
+	uORB::Subscription _vehicle_global_position_sub{ORB_ID(vehicle_global_position)};
+	uORB::Subscription _vehicle_gps_position_sub{ORB_ID(vehicle_gps_position)};
 	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
 
-	int serial_fd;
-	unsigned char rbuf[256] = {0,};
-	unsigned char tbuf[512] = {0,};
 	unsigned char reply_ping[10] = { 0x75, 0x65, 0x01, 0x04, 0x04, 0xF1, 0x01, 0x00, 0xd5, 0x6a };
 	float p_rad=0.0f;
 	float q_rad=0.0f;

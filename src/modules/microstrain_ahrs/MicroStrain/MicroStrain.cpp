@@ -1,7 +1,6 @@
 #include <MicroStrain.hpp>
 #include <px4_platform_common/defines.h>
 #include <string.h>
-
 IMU_PROTOCOL_CHECKSUM MicroStrain::Protocol_Checksum_Insepection()
 {
 	unsigned char checksum_msb = 0, checksum_lsb = 0;
@@ -99,7 +98,7 @@ void MicroStrain::AHRS_Protocol_Parsing(uint8_t* pBuff, int32_t length)
 				Protocol_Parse_Buffer.Payload_Length = 0;
 				Flag = 0;
 				Protocol_Discriptor = 0;
-				memset(Protocol_Parse_Buffer.Buffer, 0, 1024);
+				memset(Protocol_Parse_Buffer.Buffer, 0, 128);
 			}
 			else
 			{

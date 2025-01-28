@@ -30,3 +30,5 @@ fi
 # Start Land Detector.
 #
 # land_detector start rover
+
+microstrain_ahrs start

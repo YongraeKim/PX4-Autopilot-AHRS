@@ -34,3 +34,5 @@ airspeed_selector start
 # Start Land Detector.
 #
 # land_detector start fixedwing
+
+microstrain_ahrs start

@@ -65,3 +65,5 @@ fi
 # Start Land Detector.
 #
 # land_detector start airship
+
+microstrain_ahrs start

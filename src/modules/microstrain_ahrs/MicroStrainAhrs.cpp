@@ -41,6 +41,30 @@
  */
 
 #include "MicroStrainAhrs.hpp"
+
+#include <nuttx/sched.h>
+#include <sys/prctl.h>
+#include <drivers/drv_hrt.h>
+#include <termios.h>
+#include <errno.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <termios.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include <fcntl.h>
+
+
 #include <drivers/drv_hrt.h>
 #include <circuit_breaker/circuit_breaker.h>
 #include <mathlib/math/Limits.hpp>
@@ -71,49 +95,9 @@ MicroStrainAhrs::init()
 {
 	ScheduleOnInterval(5000);
 
-	serial_fd = open("/dev/ttyS6", O_RDWR | O_NOCTTY | O_NONBLOCK);
-	tcflush(serial_fd, TCIOFLUSH);
-	int speed = 230400;
-
-	if (serial_fd < 0) {
-		warnx("failed to open port: /dev/ttyS6");
-		return -1;
-	}
-
-	/* Try to set baud rate */
-	struct termios uart_config;
-	int termios_state;
-/* Initialize the uart config */
-	if ((termios_state = tcgetattr(serial_fd, &uart_config)) < 0) {
-		warnx("ERR GET CONF /dev/ttyS6");
-		::close(serial_fd);
-		return -1;
-	}
-/* Clear ONLCR flag (which appends a CR for every LF) */
-	uart_config.c_oflag &= ~ONLCR;
-
-	/* Set baud rate */
-	if (cfsetispeed(&uart_config, speed) < 0 || cfsetospeed(&uart_config, speed) < 0) {
-		warnx("ERR SET BAUD /dev/ttyS6: %d\n", termios_state);
-		::close(serial_fd);
-		return -1;
-	}
-	if ((termios_state = cfsetospeed(&uart_config, speed)) < 0) {
-		warnx("ERR: %d (cfsetospeed)\n", termios_state);
-		return false;
-	}
-	if ((termios_state = tcsetattr(serial_fd, TCSANOW, &uart_config)) < 0) {
-		warnx("ERR SET CONF /dev/ttyS6\n");
-		::close(serial_fd);
-		return -1;
-	}
-
-	uart_config.c_cflag |= CRTSCTS;
-	tcsetattr(serial_fd, TCSANOW, &uart_config);
-	PX4_INFO("serial port open at /dev/ttyS6(GPS2port)");
 	return true;
 }
-
+unsigned char rbuf[129] = {0,};
 void
 MicroStrainAhrs::Run()
 {
@@ -125,6 +109,44 @@ MicroStrainAhrs::Run()
 	}
 
 	perf_begin(_loop_perf);
+	if(serial_fd<0){
+		const char* uart_name="/dev/ttyS6";
+		serial_fd = open(uart_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
+		tcflush(serial_fd, TCIOFLUSH);
+		int speed = 230400;
+		PX4_INFO("serial fd : %d",serial_fd);
+		if (serial_fd < 0) {
+			PX4_INFO("failed to open port: /dev/ttyS6");
+			return ;
+		}
+		struct termios uart_config;
+		int termios_state;
+		/* Initialize the uart config */
+		if ((termios_state = tcgetattr(serial_fd, &uart_config)) < 0) {
+			PX4_INFO("ERR GET CONF %s", uart_name);
+			::close(serial_fd);
+			return ;
+		}
+		/* Clear ONLCR flag (which appends a CR for every LF) */
+		uart_config.c_oflag &= ~ONLCR;
+
+		/* Set baud rate */
+		if (cfsetispeed(&uart_config, speed) < 0 || cfsetospeed(&uart_config, speed) < 0) {
+			PX4_INFO("ERR SET BAUD %s: %d\n", uart_name, termios_state);
+			::close(serial_fd);
+			return ;
+		}
+		if ((termios_state = cfsetospeed(&uart_config, speed)) < 0) {
+			PX4_INFO("ERR: %d (cfsetospeed)\n", termios_state);
+			return ;
+		}
+		if ((termios_state = tcsetattr(serial_fd, TCSANOW, &uart_config)) < 0) {
+			PX4_INFO("ERR SET CONF %s\n", uart_name);
+			::close(serial_fd);
+			return ;
+		}
+		PX4_INFO("serial port open at /dev/ttyS6(GPS2port)");
+	}
 	_callback_registered = _sensor_combined_sub.registerCallback();
 	if (!_callback_registered) {
 		ScheduleDelayed(10_ms);
@@ -142,20 +164,20 @@ MicroStrainAhrs::Run()
 		p_rad = sensor_combined.gyro_rad[0];
 		q_rad = sensor_combined.gyro_rad[1];
 		r_rad = sensor_combined.gyro_rad[2];
-		ax_ms = sensor_combined.accelerometer_m_s2[0];
-		ay_ms = sensor_combined.accelerometer_m_s2[1];
-		az_ms = sensor_combined.accelerometer_m_s2[2];
+		ax_ms = sensor_combined.accelerometer_m_s2[0]*0.101972f;
+		ay_ms = sensor_combined.accelerometer_m_s2[1]*0.101972f;
+		az_ms = sensor_combined.accelerometer_m_s2[2]*0.101972f;
 		// PX4_INFO("%lf %lf %lf",(double)ax_ms,(double)ay_ms,(double)az_ms);
 		accel_3dm.field_descriptor = 0x04;
 		accel_3dm.field_length = 0x0e;
-		accel_3dm.AccX = ax_ms;
-		accel_3dm.AccY = ay_ms;
-		accel_3dm.AccZ = az_ms;
+		accel_3dm.AccX = convertEndianFloat(&ax_ms);
+		accel_3dm.AccY = convertEndianFloat(&ay_ms);
+		accel_3dm.AccZ = convertEndianFloat(&az_ms);
 		gyro_3dm.field_descriptor = 0x05;
 		gyro_3dm.field_length = 0x0e;
-		gyro_3dm.P = p_rad;
-		gyro_3dm.Q = q_rad;
-		gyro_3dm.R = r_rad;
+		gyro_3dm.P = convertEndianFloat(&p_rad);
+		gyro_3dm.Q = convertEndianFloat(&q_rad);
+		gyro_3dm.R = convertEndianFloat(&r_rad);
 	}
 	vehicle_attitude_s vehicle_attitude;
 	bool att_updated = false;
@@ -172,15 +194,15 @@ MicroStrainAhrs::Run()
 		// PX4_INFO("%lf %lf %lf %lf",(double)q0,(double)q1,(double)q2,(double)q3);
 		dcm_3dm.field_descriptor = 0x09;
 		dcm_3dm.field_length = 0x26;
-		dcm_3dm.C11 = C11;
-		dcm_3dm.C12 = C12;
-		dcm_3dm.C13 = C13;
-		dcm_3dm.C21 = C21;
-		dcm_3dm.C22 = C22;
-		dcm_3dm.C23 = C23;
-		dcm_3dm.C31 = C31;
-		dcm_3dm.C32 = C32;
-		dcm_3dm.C33 = C33;
+		dcm_3dm.C11 = convertEndianFloat(&C11);
+		dcm_3dm.C12 = convertEndianFloat(&C12);
+		dcm_3dm.C13 = convertEndianFloat(&C13);
+		dcm_3dm.C21 = convertEndianFloat(&C21);
+		dcm_3dm.C22 = convertEndianFloat(&C22);
+		dcm_3dm.C23 = convertEndianFloat(&C23);
+		dcm_3dm.C31 = convertEndianFloat(&C31);
+		dcm_3dm.C32 = convertEndianFloat(&C32);
+		dcm_3dm.C33 = convertEndianFloat(&C33);
 	}
 	vehicle_global_position_s gpos;
 	vehicle_local_position_s lpos;
@@ -191,18 +213,22 @@ MicroStrainAhrs::Run()
 		llh_3dm.field_descriptor = 0x03;
 		llh_3dm.field_length = 0x2c;
 	}
+	llh_3dm.valid = 0x0000;
+	vned_3dm.valid = 0x0000;
 	if (_vehicle_global_position_sub.update(&gpos)){
 		lat = gpos.lat;
 		lon = gpos.lon;
 		alt = gpos.alt;
 		llh_3dm.field_descriptor = 0x03;
 		llh_3dm.field_length = 0x2c;
-		llh_3dm.latitude = lat;
-		llh_3dm.longitude = lon;
-		llh_3dm.height_above_msl = (double)alt;
-		llh_3dm.height_above_ellipsoid = (double)gpos.alt_ellipsoid;
-		llh_3dm.horizontal_accuracy = gpos.eph;
-		llh_3dm.vertical_accuracy = gpos.epv;
+		llh_3dm.latitude = convertEndianDouble(&lat);
+		llh_3dm.longitude = convertEndianDouble(&lon);
+		double temp = (double)alt;
+		llh_3dm.height_above_msl = convertEndianDouble(&temp);
+		temp = (double)gpos.alt_ellipsoid;
+		llh_3dm.height_above_ellipsoid = convertEndianDouble(&temp);
+		llh_3dm.horizontal_accuracy = convertEndianFloat(&gpos.eph);
+		llh_3dm.vertical_accuracy = convertEndianFloat(&gpos.epv);
 		llh_3dm.valid = 0x1f00;
 	}
 	if(_vehicle_local_position_sub.update(&lpos))
@@ -212,13 +238,17 @@ MicroStrainAhrs::Run()
 		vD = lpos.vz;
 		vned_3dm.field_descriptor = 0x05;
 		vned_3dm.field_length = 0x24;
-		vned_3dm.v_north = vN;
-		vned_3dm.v_east = vE;
-		vned_3dm.v_down = vD;
-		vned_3dm.speed = sqrtf(vN*vN + vE*vE + vD*vD);
-		vned_3dm.ground_speed = sqrtf(vN*vN + vE*vE);
-		vned_3dm.heading = atan2f(vE, vN) * 57.2958f;
-		vned_3dm.heading_accuracy = 0.0;
+		vned_3dm.v_north = convertEndianFloat(&vN);
+		vned_3dm.v_east = convertEndianFloat(&vE);
+		vned_3dm.v_down = convertEndianFloat(&vD);
+		float temp = sqrtf(vN*vN + vE*vE + vD*vD);
+		vned_3dm.speed = convertEndianFloat(&temp);
+		temp = sqrtf(vN*vN + vE*vE);
+		vned_3dm.ground_speed = convertEndianFloat(&temp);
+		temp = atan2f(vE, vN) * 57.2958f;
+		vned_3dm.heading = convertEndianFloat(&temp);
+		temp = 0.0f;
+		vned_3dm.heading_accuracy = convertEndianFloat(&temp);
 		vned_3dm.valid = 0x3f00;
 	}
 
@@ -227,7 +257,13 @@ MicroStrainAhrs::Run()
 	// MICROSTRAIN_POLL_GPS gps_packet;
 	// Make_Poll_GPS(&gps_packet, &llh_3dm, &vned_3dm);
 
-	int len = ::read(serial_fd,&rbuf,256);
+	//
+	//unsigned char tbuf[512] = {0,};
+	int len = ::read(serial_fd,&rbuf,128);
+
+	// if(len>0){
+	// 	PX4_INFO("received %d",len);
+	// }
 	AHRS_Protocol_Parsing(rbuf, len);
 	if ((reply_command & REPLY_PING) == REPLY_PING)
 	{
@@ -263,6 +299,7 @@ MicroStrainAhrs::Run()
 		//EnterCriticalSection(&crit);
 		Make_Poll_AHRS(&poll_ahrs, &accel_3dm, &gyro_3dm, &dcm_3dm);
 		::write(serial_fd,(uint8_t*)&poll_ahrs, sizeof(MICROSTRAIN_POLL_AHRS));
+
 		//LeaveCriticalSection(&crit);
 	}
 	if ((reply_command & REPLY_POLL_GPS) == REPLY_POLL_GPS)

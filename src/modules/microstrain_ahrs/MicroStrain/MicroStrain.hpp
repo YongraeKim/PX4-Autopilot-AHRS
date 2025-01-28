@@ -129,7 +129,7 @@ typedef enum
 	ENCODER_PROTOCOL_CHECKSUM_MATCH = 0x01,
 	ENCODER_PROTOCOL_CHECKSUM_MISMATCH = 0x00
 }ENCODER_PROTOCOL_CHECKSUM;
-
+#pragma pack(1)
 typedef struct
 {
 	unsigned char sync1;
@@ -216,7 +216,7 @@ typedef struct
 }VNED_3DM;
 typedef struct
 {
-	unsigned char Buffer[256];
+	unsigned char Buffer[128];
 	int index;
 	int Payload_Length;
 	int Total_Length;
@@ -291,6 +291,9 @@ typedef struct
 	VNED_3DM vned;
 	MICROSTRAIN_AHRS_CHECKSUM checksum;
 }MICROSTRAIN_POLL_GPS;
+#pragma pack()
+
+
 
 class MicroStrain
 {
@@ -318,6 +321,42 @@ protected:
 	void Make_Poll_GPS(MICROSTRAIN_POLL_GPS* poll_gps, LLH_3DM *llh, VNED_3DM *vned);
 	ENCODER_PROTOCOL_CHECKSUM Protocol_Checksum_Inspection_8Bit(uint8_t* pbuff, int32_t length);
 	ENCODER_PROTOCOL_CHECKSUM Protocol_Checksum_Inspection_16Bit(uint8_t* pbuff, int32_t length);
+	float convertEndianFloat(float *target)
+	{
+		//unsigned long swap = (unsigned long)*target;
+		//swap = _byteswap_ulong(swap);
+		//*target = (float)swap;
+		//return (float)swap;
+		float after_conversion;
+		unsigned char *medium = (unsigned char *)&after_conversion;
+		unsigned char *conversion;
+		conversion = (unsigned char*)target;
+		for (unsigned int j = 0; j<(sizeof(float)); j++)
+		{
+			medium[j] = conversion[(sizeof(float)-1) - j];
+		} //for: endian transformation
+		*target = (float)after_conversion;
+		return after_conversion;
+	}
+
+	double convertEndianDouble(double *target)
+	{
+		//UINT64 swap = (UINT64)(*target);
+		//swap = _byteswap_uint64(swap);
+		//*target = (double)(swap);
+		//return (double)swap;
+		double after_conversion;
+		unsigned char *medium = (unsigned char *)&after_conversion;
+		unsigned char *conversion;
+		conversion = (unsigned char*)target;
+
+		for (unsigned int j = 0; j<(sizeof(double)); j++)
+		{
+			medium[j] = conversion[(sizeof(double)-1) - j];
+		} //for: endian transformation
+		*target = (double)after_conversion;
+		return after_conversion;
+	}
 private:
 	int32_t aircraft_number;
 protected:
