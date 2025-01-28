@@ -241,11 +241,11 @@ MicroStrainAhrs::Run()
 		vned_3dm.v_north = convertEndianFloat(&vN);
 		vned_3dm.v_east = convertEndianFloat(&vE);
 		vned_3dm.v_down = convertEndianFloat(&vD);
-		float temp = sqrtf(vN*vN + vE*vE + vD*vD);
+		float temp = sqrtf(lpos.vx*lpos.vx + lpos.vy*lpos.vy + lpos.vz*lpos.vz);
 		vned_3dm.speed = convertEndianFloat(&temp);
-		temp = sqrtf(vN*vN + vE*vE);
+		temp = sqrtf(lpos.vx*lpos.vx + lpos.vy*lpos.vy);
 		vned_3dm.ground_speed = convertEndianFloat(&temp);
-		temp = atan2f(vE, vN) * 57.2958f;
+		temp = atan2f(lpos.vy, lpos.vx) * 57.2958f;
 		vned_3dm.heading = convertEndianFloat(&temp);
 		temp = 0.0f;
 		vned_3dm.heading_accuracy = convertEndianFloat(&temp);
