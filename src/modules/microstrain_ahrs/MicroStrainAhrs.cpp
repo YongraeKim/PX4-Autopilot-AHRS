@@ -73,7 +73,7 @@
 
 MicroStrainAhrs::MicroStrainAhrs() :
 	ModuleParams(nullptr),
-	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::INS0),
+	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
 	_loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
 {
 	parameters_updated();
@@ -167,6 +167,16 @@ MicroStrainAhrs::Run()
 		ax_ms = sensor_combined.accelerometer_m_s2[0]*0.101972f;
 		ay_ms = sensor_combined.accelerometer_m_s2[1]*0.101972f;
 		az_ms = sensor_combined.accelerometer_m_s2[2]*0.101972f;
+		if(!PX4_ISFINITE(p_rad) || !PX4_ISFINITE(q_rad) || !PX4_ISFINITE(r_rad) ){
+			p_rad = 0.0f;
+			q_rad = 0.0f;
+			r_rad = 0.0f;
+		}
+		if(!PX4_ISFINITE(ax_ms) || !PX4_ISFINITE(ay_ms) || !PX4_ISFINITE(az_ms)){
+			ax_ms = 0.0f;
+			ay_ms = 0.0f;
+			az_ms = -1.0f;
+		}
 		// PX4_INFO("%lf %lf %lf",(double)ax_ms,(double)ay_ms,(double)az_ms);
 		accel_3dm.field_descriptor = 0x04;
 		accel_3dm.field_length = 0x0e;
@@ -187,6 +197,12 @@ MicroStrainAhrs::Run()
 		q1 = vehicle_attitude.q[1];
 		q2 = vehicle_attitude.q[2];
 		q3 = vehicle_attitude.q[3];
+		if(!PX4_ISFINITE(q0) || !PX4_ISFINITE(q1) ||!PX4_ISFINITE(q2) ||!PX4_ISFINITE(q3) ){
+			q0 = 1.0f;
+			q1 = 0.0f;
+			q2 = 0.0f;
+			q3 = 0.0f;
+		}
 
 		C11 = q0*q0+q1*q1-q2*q2-q3*q3;		C12 = 2.0f*q1*q2+2.0f*q0*q3;		C13 = 2.0f*q1*q3-2.0f*q0*q2;
 		C21 = 2.0f*q1*q2-2.0f*q0*q3;		C22 = q0*q0-q1*q1+q2*q2-q3*q3;		C23 = 2.0f*q2*q3+2.0f*q0*q1;
@@ -204,54 +220,50 @@ MicroStrainAhrs::Run()
 		dcm_3dm.C32 = convertEndianFloat(&C32);
 		dcm_3dm.C33 = convertEndianFloat(&C33);
 	}
-	vehicle_global_position_s gpos;
-	vehicle_local_position_s lpos;
 	vehicle_gps_position_s gps;
 	if(_vehicle_gps_position_sub.update(&gps)){
 		lat_int = gps.lat;
 		lon_int = gps.lon;
-		llh_3dm.field_descriptor = 0x03;
-		llh_3dm.field_length = 0x2c;
-	}
-	llh_3dm.valid = 0x0000;
-	vned_3dm.valid = 0x0000;
-	if (_vehicle_global_position_sub.update(&gpos)){
-		lat = gpos.lat;
-		lon = gpos.lon;
-		alt = gpos.alt;
+		lat = (double)(lat_int)*0.0000001;
+		lon = (double)(lat_int)*0.0000001;
+		alt = (float)(gps.alt)*0.001f;
+		alt_ellipsoid = (float)(gps.alt_ellipsoid)*0.001f;
 		llh_3dm.field_descriptor = 0x03;
 		llh_3dm.field_length = 0x2c;
 		llh_3dm.latitude = convertEndianDouble(&lat);
 		llh_3dm.longitude = convertEndianDouble(&lon);
 		double temp = (double)alt;
 		llh_3dm.height_above_msl = convertEndianDouble(&temp);
-		temp = (double)gpos.alt_ellipsoid;
+		temp = (double)gps.alt_ellipsoid;
 		llh_3dm.height_above_ellipsoid = convertEndianDouble(&temp);
-		llh_3dm.horizontal_accuracy = convertEndianFloat(&gpos.eph);
-		llh_3dm.vertical_accuracy = convertEndianFloat(&gpos.epv);
-		llh_3dm.valid = 0x1f00;
-	}
-	if(_vehicle_local_position_sub.update(&lpos))
-	{
-		vN = lpos.vx;
-		vE = lpos.vy;
-		vD = lpos.vz;
+		llh_3dm.horizontal_accuracy = convertEndianFloat(&gps.eph);
+		llh_3dm.vertical_accuracy = convertEndianFloat(&gps.epv);
+
+		vN = gps.vel_n_m_s;
+		vE = gps.vel_e_m_s;
+		vD = gps.vel_d_m_s;
 		vned_3dm.field_descriptor = 0x05;
 		vned_3dm.field_length = 0x24;
 		vned_3dm.v_north = convertEndianFloat(&vN);
 		vned_3dm.v_east = convertEndianFloat(&vE);
 		vned_3dm.v_down = convertEndianFloat(&vD);
-		float temp = sqrtf(lpos.vx*lpos.vx + lpos.vy*lpos.vy + lpos.vz*lpos.vz);
-		vned_3dm.speed = convertEndianFloat(&temp);
-		temp = sqrtf(lpos.vx*lpos.vx + lpos.vy*lpos.vy);
-		vned_3dm.ground_speed = convertEndianFloat(&temp);
-		temp = atan2f(lpos.vy, lpos.vx) * 57.2958f;
-		vned_3dm.heading = convertEndianFloat(&temp);
-		temp = 0.0f;
-		vned_3dm.heading_accuracy = convertEndianFloat(&temp);
-		vned_3dm.valid = 0x3f00;
-	}
+		float tempf = sqrtf(gps.vel_n_m_s*gps.vel_n_m_s + gps.vel_e_m_s*gps.vel_e_m_s + gps.vel_d_m_s*gps.vel_d_m_s);
+		vned_3dm.speed = convertEndianFloat(&tempf);
+		tempf = sqrtf(gps.vel_n_m_s*gps.vel_n_m_s + gps.vel_e_m_s*gps.vel_e_m_s );
+		vned_3dm.ground_speed = convertEndianFloat(&tempf);
+		tempf = atan2f(gps.vel_e_m_s, gps.vel_n_m_s) * 57.2958f;
+		vned_3dm.heading = convertEndianFloat(&tempf);
+		tempf = 0.0f;
+		vned_3dm.heading_accuracy = convertEndianFloat(&tempf);
+		if(gps.fix_type>2){
+			llh_3dm.valid = 0x1f00;
+			vned_3dm.valid = 0x3f00;
+		}else{
+			llh_3dm.valid = 0x0000;
+			vned_3dm.valid = 0x0000;
+		}
 
+	}
 	// MICROSTRAIN_POLL_AHRS ahrs_packet;
 	// Make_Poll_AHRS(&ahrs_packet, &accel_3dm, &gyro_3dm, &dcm_3dm);
 	// MICROSTRAIN_POLL_GPS gps_packet;

@@ -335,7 +335,7 @@ protected:
 		{
 			medium[j] = conversion[(sizeof(float)-1) - j];
 		} //for: endian transformation
-		*target = (float)after_conversion;
+		//*target = (float)after_conversion;
 		return after_conversion;
 	}
 
@@ -354,7 +354,7 @@ protected:
 		{
 			medium[j] = conversion[(sizeof(double)-1) - j];
 		} //for: endian transformation
-		*target = (double)after_conversion;
+		//*target = (double)after_conversion;
 		return after_conversion;
 	}
 private:

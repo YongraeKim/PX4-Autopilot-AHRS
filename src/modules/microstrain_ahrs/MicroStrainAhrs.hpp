@@ -89,6 +89,7 @@ private:
 	double lat = 0.0f;
 	double lon = 0.0f;
 	float alt = 0.0f;
+	float alt_ellipsoid = 0.0f;
 	int lat_int = 0;
 	int lon_int = 0;
 
